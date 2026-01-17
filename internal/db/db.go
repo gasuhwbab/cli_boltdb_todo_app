@@ -1,7 +1,6 @@
 package db
 
 import (
-	"encoding/binary"
 	"time"
 
 	"github.com/boltdb/bolt"
@@ -50,8 +49,8 @@ func (storage *Storage) Add(buf []byte) error {
 func (storage *Storage) Update(from, to []byte) error {
 	if err := storage.db.Update(func(tx *bolt.Tx) error {
 		id := from[0:2]
-		time := time.Unix(0, int64(binary.BigEndian.Uint64(from[2:10]))).Format("2006/01/02")
-		bucket := tx.Bucket([]byte(time))
+		time := from[2:10]
+		bucket := tx.Bucket(time)
 		if err := bucket.Put(id, to[2:]); err != nil {
 			return err
 		}
@@ -65,8 +64,8 @@ func (storage *Storage) Update(from, to []byte) error {
 func (storage *Storage) Delete(buf []byte) error {
 	if err := storage.db.Update(func(tx *bolt.Tx) error {
 		id := buf[0:2]
-		time := time.Unix(0, int64(binary.BigEndian.Uint64(buf[2:10]))).Format("2006/01/02")
-		bucket := tx.Bucket([]byte(time))
+		time := buf[2:]
+		bucket := tx.Bucket(time)
 		if err := bucket.Delete(id); err != nil {
 			return err
 		}
