@@ -1,20 +1,19 @@
 package db
 
 import (
-	"time"
+	"encoding/binary"
+	"errors"
 
 	"github.com/boltdb/bolt"
 )
 
 const dbPath = "/Users/ruslanmuradov/github.com:gasuhwbab/cli_todo_app/data/todo_app.db"
 
+var Db = &Storage{path: dbPath}
+
 type Storage struct {
 	db   *bolt.DB
 	path string
-}
-
-func NewStorage(path string) *Storage {
-	return &Storage{path: path}
 }
 
 func (storage *Storage) StartDb() error {
@@ -30,13 +29,17 @@ func (storage *Storage) Close() error {
 	return storage.db.Close()
 }
 
-func (storage *Storage) Add(buf []byte) error {
+func (storage *Storage) Add(name, buf []byte) error {
 	if err := storage.db.Update(func(tx *bolt.Tx) error {
-		bucket, err := tx.CreateBucketIfNotExists([]byte(time.Now().Format("2006/01/02")))
+		bucket, err := tx.CreateBucketIfNotExists(name)
+
 		if err != nil {
 			return err
 		}
-		if err := bucket.Put(buf[:2], buf[2:]); err != nil {
+		id, _ := bucket.NextSequence()
+		binaryId := make([]byte, 8)
+		binary.BigEndian.PutUint64(binaryId, id)
+		if err := bucket.Put(binaryId, buf[8:]); err != nil {
 			return err
 		}
 		return nil
@@ -46,12 +49,10 @@ func (storage *Storage) Add(buf []byte) error {
 	return nil
 }
 
-func (storage *Storage) Update(from, to []byte) error {
+func (storage *Storage) Update(name, id, to []byte) error {
 	if err := storage.db.Update(func(tx *bolt.Tx) error {
-		id := from[0:2]
-		time := from[2:10]
-		bucket := tx.Bucket(time)
-		if err := bucket.Put(id, to[2:]); err != nil {
+		bucket := tx.Bucket(name)
+		if err := bucket.Put(id, to[8:]); err != nil {
 			return err
 		}
 		return nil
@@ -61,11 +62,9 @@ func (storage *Storage) Update(from, to []byte) error {
 	return nil
 }
 
-func (storage *Storage) Delete(buf []byte) error {
+func (storage *Storage) Delete(name, id []byte) error {
 	if err := storage.db.Update(func(tx *bolt.Tx) error {
-		id := buf[0:2]
-		time := buf[2:]
-		bucket := tx.Bucket(time)
+		bucket := tx.Bucket(name)
 		if err := bucket.Delete(id); err != nil {
 			return err
 		}
@@ -76,17 +75,23 @@ func (storage *Storage) Delete(buf []byte) error {
 	return nil
 }
 
-func (storage *Storage) Get() ([][]byte, error) {
+func (storage *Storage) Get(name []byte) ([][]byte, error) {
 	bufs := make([][]byte, 0)
-	storage.db.View(func(tx *bolt.Tx) error {
-		tx.ForEach(func(name []byte, b *bolt.Bucket) error {
-			b.ForEach(func(k, v []byte) error {
-				bufs = append(bufs, v)
-				return nil
-			})
-			return nil
-		})
+	if err := storage.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(name)
+		if bucket == nil {
+			return errors.New("bucket does not exist")
+		}
+		c := bucket.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			buf := make([]byte, len(k)+len(v))
+			copy(buf[:len(k)], k)
+			copy(buf[len(k):], v)
+			bufs = append(bufs, buf)
+		}
 		return nil
-	})
+	}); err != nil {
+		return nil, err
+	}
 	return bufs, nil
 }

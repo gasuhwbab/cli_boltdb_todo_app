@@ -7,13 +7,12 @@ import (
 	"github.com/gasuhwbab/cli_todo_app/internal/db"
 )
 
-const dbPath = "/Users/ruslanmuradov/github.com:gasuhwbab/cli_todo_app/data/todo_app.db"
-
 func main() {
-	storage := db.NewStorage(dbPath)
-	if err := storage.StartDb(); err != nil {
+	if err := db.Db.StartDb(); err != nil {
 		log.Fatal(err)
 	}
-	app := cli.NewCLI(storage)
-	app.Run()
+	defer db.Db.Close()
+	if err := cli.Run(); err != nil {
+		log.Fatal(err)
+	}
 }
